@@ -286,8 +286,6 @@ function open_restart_units(filename, directory, domain, CS, IO_handles, file_pa
           endif
         endif
         filepath = trim(directory) // trim(restartname)
-!! DD
-        call SIS_mesg("SIS_restart: reading SIS restart "//trim(restartname))
 
         if (num_restart < 10) then
           write(suffix,'("_",I1)') num_restart

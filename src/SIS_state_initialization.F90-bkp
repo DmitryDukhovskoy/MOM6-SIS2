@@ -27,8 +27,7 @@ use SIS_get_input,     only : directories
 use SIS_types,         only : ice_state_type
 use SIS_hor_grid,      only : SIS_hor_grid_type, set_hor_grid, SIS_hor_grid_end
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enth_from_TS, Temp_from_En_S, T_freeze, ice_thermo_type
-!! DD
-use SIS_sponge,        only : initialize_isponge, isponge_CS
+
 implicit none ; private
 
 #include <SIS2_memory.h>

@@ -114,8 +114,6 @@ use SIS2_ice_thm,      only : ice_temp_SIS2, SIS2_ice_thm_init, SIS2_ice_thm_end
 use SIS2_ice_thm,      only : ice_thermo_init, ice_thermo_end, T_freeze, ice_thermo_type
 use specified_ice,     only : specified_ice_dynamics, specified_ice_init, specified_ice_CS
 use specified_ice,     only : specified_ice_end, specified_ice_sum_output_CS
-!! DD
-use SIS_sponge,        only : isponge_CS, SIS_sponge_end
 
 implicit none ; private
 
@@ -245,9 +243,7 @@ subroutine update_ice_slow_thermo(Ice)
   endif
 
   call slow_thermodynamics(sIST, dt_slow, Ice%sCS%slow_thermo_CSp, Ice%sCS%OSS, FIA, &
-                           Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG, &
-                           Ice%sCS%isponge_CSp)    !! DD
-
+                           Ice%sCS%XSF, Ice%sCS%IOF, sG, US, sIG)
   if (Ice%sCS%debug) then
     call Ice_public_type_chksum("Before set_ocean_top_fluxes", Ice, check_slow=.true.)
     call IOF_chksum("Before set_ocean_top_fluxes", Ice%sCS%IOF, sG, US, thermo_fluxes=.true.)
@@ -2288,13 +2284,6 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     sIST => Ice%sCS%IST ; sIG => Ice%sCS%IG ; sG => Ice%sCS%G
 
     new_sim = is_new_run(Ice%Ice_restart)
-!! DD
-    if (new_sim) then
-      call SIS_mesg("ice_model: is_new_run True")
-    else
-      call SIS_mesg("ice_model: is_new_run False")
-    endif
-!! DD
     if (.not.new_sim) then
       call callTree_enter("ice_model_init():restore_from_restart_files "//trim(restart_file))
       ! Set a value of IG%H_to_kg_m2 that will permit its absence from the restart file to be
@@ -2382,8 +2371,7 @@ subroutine ice_model_init(Ice, Time_Init, Time, Time_step_fast, Time_step_slow, 
     Ice%sCS%Time_step_slow = Time_step_slow
 
     call SIS_slow_thermo_init(Ice%sCS%Time, sG, US, sIG, param_file, Ice%sCS%diag, &
-                              Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp, &
-                              Ice%sCS%isponge_CSp, Ice%sCS%IST)    !! DD
+                              Ice%sCS%slow_thermo_CSp, Ice%sCS%SIS_tracer_flow_CSp)
 
     if (specified_ice) then
       recategorize_ice = .false.
@@ -2707,8 +2695,6 @@ subroutine ice_model_end(Ice)
     call SIS_fast_thermo_end(Ice%fCS%fast_thermo_CSp)
 
     call SIS_optics_end(Ice%fCS%optics_CSp)
-
-    call SIS_sponge_end(Ice%sCS%isponge_CSp)  ! DD
 
     if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) &
       call astronomy_end

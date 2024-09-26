@@ -50,6 +50,12 @@
                                !  restart variables, time derivatives, etc.
                                !  This is mostly used for the size of pointer
                                !  arrays, so it should be set generously.
+#ifndef MAX_FIELDS_RLX_
+#define MAX_FIELDS_RLX_ 5
+#endif
+                               !    The maximum permitted number (each) of
+                               !  tracer fields for relaxation 
+                               !  e.g.: Hice, partial area (conc)
 
 #define NIHALO_ 2
 #define NJHALO_ 2
