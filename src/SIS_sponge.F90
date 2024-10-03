@@ -7,6 +7,7 @@ module SIS_sponge
 ! TODO: Figure out what modules to use
 ! This is the best guess:
 use MOM_coms,          only : sum_across_PEs
+use MOM_coms,          only : PE_here   !! debugging
 use ice_grid,          only : ice_grid_type
 use ice_spec_mod,      only : get_sea_surface
 
@@ -54,6 +55,7 @@ public initialize_isponge, apply_isponge, set_up_isponge_field, SIS_sponge_end
 !> A structure for creating arrays of pointers to 3D arrays
 type, public :: p3d
   real, dimension(:,:,:), pointer :: p => NULL() !< A pointer to a 3D array [various]
+  character(len=15)               :: fld_name    !< Name of the ice field being relaxed
 end type p3d
 !> A structure for creating arrays of pointers to 2D arrays
 type, public :: p2d
@@ -63,14 +65,16 @@ end type p2d
 !> This control structure holds memory and parameters for the SIS_sponge module
 type, public :: isponge_CS ; private
   logical, public :: use_isponge = .false.  !< If true, ice tracer fields may be relaxed somewhere in the domain
+  integer, public :: itest, jtest    ! debugging, output at idices on PE
   integer :: num_col    !< The number of sponge points within the computational domain.
-  integer :: fldno = 0  !< The number of fields which have already been
+  integer, public :: fldno = 0  !< The number of fields which have already been
                         !! registered by calls to set_up_sponge_field
   integer, pointer :: col_i(:) => NULL() !< Array of the i-indicies of each of the columns being damped.
   integer, pointer :: col_j(:) => NULL() !< Array of the j-indicies of each of the columns being damped.
   real, pointer :: Iresttime_col(:) => NULL() !< The inverse restoring time of each column [T-1 ~> s-1].
   type(p3d) :: var(MAX_FIELDS_RLX_)     !< Pointers to the fields that will be relaxed
-  type(p2d) :: Ref_val(MAX_FIELDS_RLX_) !< The values to which the fields are relaxed
+  type(p2d) :: Ref_val(MAX_FIELDS_RLX_) !< The values to which the fields are 
+                                        ! relaxed (cat, linear_index)
 end type isponge_CS
 
 contains
@@ -80,7 +84,7 @@ contains
 !! Iresttime and which mask2dT indicates are ocean points are included in the
 !! sponges.  
 !subroutine initialize_isponge(Iresttime, IST, G, IG, param_file, CS)
-subroutine initialize_isponge(param_file, Iresttime, G, IG, CS)
+subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest)
 !  type(ice_state_type),    intent(in) :: IST        !< A type describing the state of the sea ice
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
@@ -89,6 +93,8 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS)
                            intent(in) :: Iresttime  !< The inverse of the restoring time [T-1 ~> s-1].
   type(isponge_CS),        pointer    :: CS         !< A pointer to the SIS_isponge control structure
                                                     !! for this module
+  integer, intent(in) :: itest, jtest
+
   ! This include declares and sets the variable "version".
 # include "version_variable.h"
   character(len=40)  :: mdl = "SIS_sponge"  ! This module's name.
@@ -126,6 +132,8 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS)
   allocate(CS)
 
   CS%use_isponge = use_isponge
+  CS%itest = itest
+  CS%jtest = jtest
   CS%num_col = 0 ; CS%fldno = 0
   do j=G%jsc,G%jec ; do i=G%isc,G%iec
     if ((Iresttime(i,j) > 0.0) .and. (G%mask2dT(i,j) > 0.0)) &
@@ -151,7 +159,7 @@ subroutine initialize_isponge(param_file, Iresttime, G, IG, CS)
 
   endif
 
-  call SIS_mesg("Calling sum_across_PEs")
+!  call SIS_mesg("Calling sum_across_PEs")
   total_isponge_cols = CS%num_col
   call sum_across_PEs(total_isponge_cols)
 
@@ -167,15 +175,16 @@ end subroutine initialize_isponge
 !! address is given by f_ptr. Reference profile = values towards which the
 !! SIS field is being relaxed to. 
 !! Current version assumes 2D fields only (+ 1D for categories) such as Hice
-subroutine set_up_isponge_field(sp_val, f_ptr, G, IG, CS, ncat)
+subroutine set_up_isponge_field(sp_val, f_ptr, G, IG, CS, ncat, fld_name)
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG         !< The sea-ice specific grid type
   integer,                 intent(in) :: ncat
-  real, dimension(ncat, SZI_(G),SZJ_(G)), &
+  real, dimension(SZI_(G), SZJ_(G), ncat), &
                            intent(in) :: sp_val     !< The reference profiles of the quantity 
                                                     !! being registered [various]
-  real, dimension(ncat, SZI_(G),SZJ_(G)), &
+  real, dimension(SZI_(G), SZJ_(G), ncat), &
                    target, intent(in) :: f_ptr      !< a pointer to the field which will be relaxed [various]
+  character(*),             intent(in) :: fld_name   !< Name of the relaxed field
   type(isponge_CS),     pointer       :: CS         !< A pointer to the control structure for this module that
                                                     !! is set by a previous call to initialize_sponge.
 
@@ -193,14 +202,15 @@ subroutine set_up_isponge_field(sp_val, f_ptr, G, IG, CS, ncat)
     call SIS_error(FATAL,"set_up_isponge_field: "//mesg)
   endif
 
-  allocate(CS%Ref_val(CS%fldno)%p(IG%CatIce,CS%num_col), source=0.0)
+  allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,IG%CatIce), source=0.0)
   do col=1,CS%num_col
     do k=1,IG%CatIce
-      CS%Ref_val(CS%fldno)%p(k,col) = sp_val(CS%col_i(col),CS%col_j(col),k)
+      CS%Ref_val(CS%fldno)%p(col,k) = sp_val(CS%col_i(col),CS%col_j(col),k)
     enddo
   enddo
 
   CS%var(CS%fldno)%p => f_ptr
+  CS%var(CS%fldno)%fld_name = fld_name
 
 end subroutine set_up_isponge_field
 
@@ -219,25 +229,43 @@ subroutine apply_isponge(dt, CS, IG, IST)
 !  real :: H_rescale_ice, H_rescale_snow
   real :: damp         ! The timestep times the local damping coefficient [nondim].
   real :: I1pdamp      ! I1pdamp is 1/(1 + damp). [nondim]
-  real :: damp_1pdamp  ! damp_1pdamp is damp/(1 + damp). [nondim]
-  real :: Idt          ! The inverse of the timestep [T-1 ~> s-1]
+  real :: p_old        ! debugging  
   character(len=40)  :: mdl = "SIS_sponge"  ! This module's name.
   character(len=256) :: mesg
   integer :: c, i, j, k, m
+  integer :: current_pe
+  logical :: prnt_debug
 
   ! Determine the thickness rescaling factors that are needed.
 !  H_rescale_ice = 1.0 ; H_rescale_snow = 1.0
 
-  write(mesg,'("apply_isponge: dt=",F16.2," sec, num_col=",I5)') dt, CS%num_col
-  call SIS_mesg(mesg)
+  if (CS%num_col == 0) return
+
+  current_pe = PE_here()
+!  write(mesg,'("apply_isponge: PE: ",I6," dt=",F16.2," sec, num_col=",I5)') current_pe, dt, CS%num_col
+!  call SIS_mesg(mesg)
+!  write(*,'(A)') mesg 
+ 
+  prnt_debug = .false.
+  if (CS%itest > 0 .and. CS%jtest > 0) &
+    prnt_debug = .true.
+
   do c=1,CS%num_col
     i = CS%col_i(c) ; j = CS%col_j(c)             
     damp = dt * CS%Iresttime_col(c); I1pdamp = 1.0 / (1.0 + damp)
 
     do k=1,IG%CatIce
       do m=1,CS%fldno
+        p_old = CS%var(m)%p(i,j,k)
         CS%var(m)%p(i,j,k) = I1pdamp * &
-           (CS%var(m)%p(i,j,k) + CS%Ref_val(m)%p(k,c)*damp)
+           (CS%var(m)%p(i,j,k) + CS%Ref_val(m)%p(c,k)*damp)
+        if (i==CS%itest .and. j==CS%jtest) then
+          write(mesg,'("var#: "I1,"k=",I2," old_mHice=",F9.4," new_mHice=",F9.4,&
+                      " 1/tau=",D10.3," refval="F9.3)') &
+            m, k, p_old, CS%var(m)%p(i,j,k), CS%Iresttime_col(c), CS%Ref_val(m)%p(c,k)
+          write(*,'(A)') mesg
+          prnt_debug = .false.
+        endif
       enddo
     enddo
 

@@ -325,6 +325,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   real :: Idt_slow ! The inverse of the slow thermodynamic time step [T-1 ~> s-1]
   integer :: i, j, k, l, m, b, nb, isc, iec, jsc, jec, ncat, NkIce
   integer :: isd, ied, jsd, jed
+  character(len=256) :: mesg    !! DD
 
   real, dimension(SZI_(G),SZJ_(G),IG%CatIce) :: &
     rdg_frac, & ! fraction of ridged ice per category [nondim]
@@ -461,12 +462,9 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
 
   ! DD: do ice relaxation if requested
   if (ispCS%use_isponge) then
-    call SIS_mesg("SIS_slow_thermo: calling apply_isponge")
-  else
-    call SIS_mesg("SIS_slow_thermo: use_isponge in ispCS is False not calling apply_isponge")
-  endif
-  if (ispCS%use_isponge) &
+    call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
     call apply_isponge(US%T_to_s*dt_slow, ispCS, IG, IST)
+  endif
   ! DD
 
   if (CS%column_check) &
@@ -1426,12 +1424,19 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   logical           :: use_isponge  
   real              :: Irelax(SZI_(G),SZJ_(G))    ! The sponge damping rate [T-1 ~> s-1] - 
                                                   !! for now,then move where it is read in
-  real              :: tmp(IG%CatIce,SZI_(G),SZJ_(G)) ! 3D array for 2D+cat ice fields - for code development only
+  real              :: tmp(SZI_(G),SZJ_(G),IG%CatIce) ! 3D array for 2D+cat ice fields - for code development only
+  real              :: rho_ice
+  real              :: dmm   !! debugging
   integer           :: current_pe, nihalo, njhalo, iscG, iecG, jscG, jecG
   integer           :: nic, njc, istrtG, jstrtG, iendG, jendG
+  integer           :: isdG, iedG, jsdG, jedG
+  integer           :: nid, njd
   character(len=200) :: mesg 
-  integer :: i1, i2, j1, j2, icat,  & !! DD for debugging, not needed after relaxation read from file implemented 
-             istrtC, iendC, jstrtC, jendC, di1, di2, dj1, dj2  !! DD
+!! for debugging, not needed after relaxation read from file implemented 
+  integer :: i1, i2, j1, j2, icat
+  integer :: istrtC, iendC, jstrtC, jendC
+  integer :: istrtD, iendD, jstrtD, jendD, di1, di2, dj1, dj2  !! DD
+  integer :: itest, jtest, itestG, jtestG
   logical :: inrlx  !! DD - for code development, not needed later
 !! DD
   real               :: transmute_scale ! A scaling factor to use when reading the transmutation rate.
@@ -1593,7 +1598,9 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
     inrlx = .false.
     Irelax = 0.0
     i1 = 260; i2 = 342; j1 = 575; j2 = 736
+    itestG = 317; jtestG = 684
     istrtC = 0; iendC = 0; jstrtC = 0; jendC = 0
+    istrtD = 0; iendD = 0; jstrtD = 0; jendD = 0
     nihalo = G%Domain%nihalo
     njhalo = G%Domain%njhalo
 !    write(mesg,'("SIS_slow_thermo: nihalo=",I4," njhalo=",I4)') nihalo, njhalo
@@ -1602,43 +1609,63 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
 !    print*,'PE: ',current_pe,' isc=',G%isc,' iec=',G%iec,' jsc=',G%jsc,' jec=',G%jec
 !    print*,'PE: ',current_pe,' isd=',G%isd,' ied=',G%ied,' jsd=',G%jsd,' jed=',G%jed
 !    print*,'PE: ',current_pe,' isd_global=',G%isd_global, 'jsd_global=',G%jsd_global
+! Exclude halo points, computational domain:
     nic = G%iec - G%isc + 1
     njc = G%jec - G%jsc + 1
     iscG = G%isd_global + nihalo; iecG = iscG + nic
     jscG = G%jsd_global + njhalo; jecG = jscG + njc
-    if ((iscG >= i1 .and. iscG < i2) .or. (iecG > i1 .and. iecG <= i2)) then
-      if ((jscG >= j1 .and. jscG < j2) .or. (jecG > j1 .and. jecG <= j2)) then
-        istrtG = max(iscG, i1); iendG = min(iecG, i2)
-        jstrtG = max(jscG, j1); jendG = min(jecG, j2)
-        istrtC = istrtG - iscG + 1 + nihalo; iendC = iendG - iscG + 1 + nihalo;
-        jstrtC = jstrtG - jscG + 1 + njhalo; jendC = jendG - jscG + 1 + njhalo;
-        print*,'PE: ',current_pe,'istrtG=',istrtG,' iendG=',iendG,' jstrtG=',jstrtG,' jendG=',jendG
-        print*,'PE: ',current_pe,'istrtC=',istrtC,' iendC=',iendC,' jstrtC=',jstrtC,' jendC=',jendC
-        Irelax(istrtC:iendC,jstrtC:jendC) = 0.00028  ! 1hr relaxation, s-1
+! Include halo points, i.e. data domain:
+    nid  = G%ied - G%isd + 1
+    njd  = G%jed - G%jsd + 1
+    isdG = G%isd_global; iedG = isdG + nid
+    jsdG = G%jsd_global; jedG = jsdG + njd
+    if ((isdG >= i1 .and. isdG < i2) .or. (iedG > i1 .and. iedG <= i2)) then
+      if ((jsdG >= j1 .and. jsdG < j2) .or. (jedG > j1 .and. jedG <= j2)) then
+        istrtG = max(isdG, i1); iendG = min(iedG, i2)
+        jstrtG = max(jsdG, j1); jendG = min(jedG, j2)
+!        istrtC = istrtG - iscG + 1 + nihalo; iendC = iendG - iscG + 1 + nihalo;
+!        jstrtC = jstrtG - jscG + 1 + njhalo; jendC = jendG - jscG + 1 + njhalo;
+        istrtD = istrtG - isdG + 1; iendD = iendG - isdG + 1;
+        jstrtD = jstrtG - jsdG + 1; jendD = jendG - jsdG + 1;
+!        print*,'PE: ',current_pe,'istrtG=',istrtG,' iendG=',iendG,' jstrtG=',jstrtG,' jendG=',jendG
+!        print*,'PE: ',current_pe,'istrtC=',istrtC,' iendC=',iendC,' jstrtC=',jstrtC,' jendC=',jendC
+!        Irelax(istrtC:iendC,jstrtC:jendC) = 0.00028  ! 1hr relaxation, s-1, computational domain
+        Irelax(istrtD:iendD,jstrtD:jendD) = 0.00014  ! 30-min relaxation, s-1, data domain
         inrlx = .true.
       endif
-     endif
-
-    call initialize_isponge(param_file, Irelax, G, IG, ispCS) 
-    if (ispCS%use_isponge) then
-     call SIS_mesg("SIS_slow_thermo: isponge flag after initialize_isponge is TRUE")
-    else
-     call SIS_mesg("SIS_slow_thermo: isponge flag after initialize_isponge is FALSE")
     endif
+
+! Find test point:
+    itest = 0; jtest = 0
+    if (iscG <= itestG .and. itestG <= iecG .and. jscG <= jtestG .and. jtestG <= jecG) then
+      itest = itestG - iscG + 1; jtest = jtestG - jscG + 1      
+    endif
+    
+    if (itest > 0 .and. jtest > 0) then
+      print*,'PE: ',current_pe,' isG=',istrtG,' ieG=',iendG,' jsc=',jstrtG,' jec=',jendG
+      print*,'itest=',itest,' jtest=',jtest
+    endif
+
+    call initialize_isponge(param_file, Irelax, G, IG, ispCS, itest, jtest) 
 ! Set up sponge fields
     call SIS_mesg("SIS_slow_thermo: setting up ice sponge fields")
-! Here will add reading relax data: Hice, Conc_ice
+! Here add reading relax data: Hice, Conc_ice
 ! Assumed that relaxation fields are already in ice categories and correct units
 ! Set up ice thickness:
     tmp = 0.0
+    call get_SIS2_thermo_coefs(sIST%ITV, rho_ice=rho_ice)
+    dmm = 2.2 * US%m_to_Z * rho_ice
+    write(mesg, '("SIS_slow_thermo: rho_ice=",F7.2," dmm=",F16.4," scale m2Z=",F6.2)') &
+                    rho_ice, dmm, US%m_to_Z 
+    call SIS_mesg(mesg)
     if (inrlx) &
-      tmp(IG%CatIce,:,:) = 1991.  ! kg/m2 ~2.2 m for rho_ice=905
-    call set_up_isponge_field(tmp, sIST%mH_ice, G, IG, ispCS, IG%CatIce)
+      tmp(:,:,IG%CatIce) = 2.2 * US%m_to_Z * rho_ice  ! m --> kg/m2 and unscale
+    call set_up_isponge_field(tmp, sIST%mH_ice, G, IG, ispCS, IG%CatIce, 'mH_ice')
 ! Set up ice concentration by cats
     tmp = 0.0
     if (inrlx) &
-      tmp(IG%CatIce,:,:) = 0.9 ! partial ice area, unitless  
-    call set_up_isponge_field(tmp, sIST%mH_ice, G, IG, ispCS, IG%CatIce)
+      tmp(:,:,IG%CatIce) = 0.9 ! partial ice area, unitless  
+    call set_up_isponge_field(tmp, sIST%part_size, G, IG, ispCS, IG%CatIce, 'part_size')
     call SIS_mesg("SIS_slow_thermo: finished setting up ice sponge fields ")
 
   else
