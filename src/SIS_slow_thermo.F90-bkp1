@@ -62,7 +62,6 @@ use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, calculate_T_freeze
 !! DD:
 use SIS_sponge,        only : initialize_isponge, set_up_isponge_field, apply_isponge, isponge_CS
-use SIS_sponge,        only : adjust_IOfluxes_isponge
 
 implicit none ; private
 
@@ -432,13 +431,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
     IOF%Enth_Mass_in_ocn(i,j) = 0.0 ; IOF%Enth_Mass_out_ocn(i,j) = 0.0
   enddo ; enddo
 
-  ! DD: do ice relaxation if requested before thermodynamics
-  if (ispCS%use_isponge) then
-    call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
-    call apply_isponge(dt_slow, ispCS, IG, IOF, IST, US, OSS)
-  endif
-  ! DD
-
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
   call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
@@ -468,12 +460,10 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   ! This needs to go after accumulate_bottom_input.
   if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G, US)
 
-  ! DD: do adjustment of S and heat fluxes due to ice relaxation 
+  ! DD: do ice relaxation if requested
   if (ispCS%use_isponge) then
-!    call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
-!    call apply_isponge(dt_slow, ispCS, IG)
-!    call SIS_mesg("SIS_slow_thermo: calling adjust_IOfluxes_isponge ")
-!    call adjust_IOfluxes_isponge(dt_slow, ispCS, IG, IST, IOF, OSS, US)
+    call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
+    call apply_isponge(US%T_to_s*dt_slow, ispCS, IG, IST)
   endif
   ! DD
 
@@ -1665,7 +1655,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
     tmp = 0.0
     call get_SIS2_thermo_coefs(sIST%ITV, rho_ice=rho_ice)
     dmm = 2.2 * US%m_to_Z * rho_ice
-    write(mesg, '("SIS_slow_thermo: rho_ice=",F7.2," dmm_scaled=",F16.4," scale m2Z=",F6.2)') &
+    write(mesg, '("SIS_slow_thermo: rho_ice=",F7.2," dmm=",F16.4," scale m2Z=",F6.2)') &
                     rho_ice, dmm, US%m_to_Z 
     call SIS_mesg(mesg)
     if (inrlx) &
