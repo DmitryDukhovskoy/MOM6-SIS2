@@ -63,6 +63,7 @@ use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, cal
 !! DD:
 use SIS_sponge,        only : initialize_isponge, set_up_isponge_field, apply_isponge, isponge_CS
 use SIS_sponge,        only : adjust_IOfluxes_isponge
+use SIS_sponge,        only : check_IOF, check_FIA     !! Debugging 
 
 implicit none ; private
 
@@ -436,12 +437,16 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   if (ispCS%use_isponge) then
     call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
     call apply_isponge(dt_slow, ispCS, IG, IOF, IST, US, OSS)
+!!    call check_IOF(ispCS, IOF, OSS, US, 'Fluxes After apply_isponge')  
+!    call check_FIA(dt_slow, ispCS, FIA, US, IG, 'Fluxes After apply_isponge')  ! DD
   endif
   ! DD
 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
   call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
+!  call check_IOF(ispCS, IOF, OSS, US, 'Fluxes After SIS2_thermodyanmics')   ! DD
+!  call check_FIA(dt_slow, ispCS, FIA, US, IG, 'Fluxes After SIS2_thermodynamics') ! DD
 
   !TOM> calculate partial ice growth for ridging and aging.
   if (CS%do_ridging) then
@@ -464,17 +469,19 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   call disable_SIS_averaging(CS%diag)
 
   call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
+!  call check_IOF(ispCS, IOF, OSS, US, 'Fluxes After acccumulate_bottom_input')   ! DD
+!  call check_FIA(dt_slow, ispCS, FIA, US, IG, 'Fluxes After accumulate_bottom_input') ! DD
 
   ! This needs to go after accumulate_bottom_input.
   if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G, US)
+  if (associated(XSF)) call SIS_mesg("SIS_slow_thermo: XSF associated ")  ! DD debugging
 
   ! DD: do adjustment of S and heat fluxes due to ice relaxation 
-  if (ispCS%use_isponge) then
-!    call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
-!    call apply_isponge(dt_slow, ispCS, IG)
+!  if (ispCS%use_isponge) then
 !    call SIS_mesg("SIS_slow_thermo: calling adjust_IOfluxes_isponge ")
 !    call adjust_IOfluxes_isponge(dt_slow, ispCS, IG, IST, IOF, OSS, US)
-  endif
+!    call check_IOF(ispCS, IOF, OSS, US, 'After adjust_IOFfluxes_isponge')
+!  endif
   ! DD
 
   if (CS%column_check) &
