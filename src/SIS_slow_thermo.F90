@@ -1647,7 +1647,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
 !        print*,'PE: ',current_pe,'istrtG=',istrtG,' iendG=',iendG,' jstrtG=',jstrtG,' jendG=',jendG
 !        print*,'PE: ',current_pe,'istrtC=',istrtC,' iendC=',iendC,' jstrtC=',jstrtC,' jendC=',jendC
 !        Irelax(istrtC:iendC,jstrtC:jendC) = 0.00028  ! 1hr relaxation, s-1, computational domain
-        Irelax(istrtD:iendD,jstrtD:jendD) = 0.00014  ! 30-min relaxation, s-1, data domain
+        Irelax(istrtD:iendD,jstrtD:jendD) = 0.00014  ! 2hr relaxation, s-1, data domain
         inrlx = .true.
       endif
     endif

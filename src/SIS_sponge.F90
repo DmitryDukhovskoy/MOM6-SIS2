@@ -250,7 +250,7 @@ subroutine apply_isponge(dt_slow, CS, IG, IOF, IST, US, OSS)
   integer :: current_pe
   real    :: Idt_slow    ! The inverse of the thermodynamic step [T-1 ~> s-1].
   real    :: iconc_old, ithk_old, iconc_new, ithk_new
-  real    :: iconc_tot, dlt_ice_tot
+  real    :: iconc_tot, dlt_ice_tot, iconc_tot_old
   real    :: dlt_iconc, dlt_ithk, enthalpy_ocn, enthalpy_ocn_tfrz
   real    :: dlt_salt, dlt_heat, dlt_water, dlt_snow
   real    :: dlt_ice           ! total change of ice due to conc and thickness relaxation
@@ -284,11 +284,13 @@ subroutine apply_isponge(dt_slow, CS, IG, IOF, IST, US, OSS)
            (CS%var(m)%p(i,j,k) + CS%Ref_val(m)%p(c,k)*damp)
 
         if (i==CS%itest .and. j==CS%jtest .and. f_debug) then
-          if (CS%var(m)%fld_name(1:5) == 'mHice') then
-            coeff = US%RZ_to_kg_m2
-          else
-            coeff = 1.0
-          endif
+          select case (trim(CS%var(m)%fld_name))
+            case('mH_ice')    ; coeff = US%RZ_to_kg_m2
+            case('part_size') ; coeff = 1.0
+            case default
+              write(mesg,'("SIS_sponge: Unknown relaxation field: ",A)') trim(CS%var(m)%fld_name)
+              call SIS_error(FATAL,"apply_isponge: "//mesg)          
+          end select
 
           write(mesg,'(A8," k=",I2," old:=",D12.4," new=",D12.4,&
                       " 1/tau=",D12.3," refval=",D12.3)') &
@@ -334,40 +336,43 @@ subroutine apply_isponge(dt_slow, CS, IG, IOF, IST, US, OSS)
       enddo
     enddo  ! CatIce
 
-!    iconc_tot = 0.0
+    iconc_tot = 0.0
+    iconc_tot_old = 0.0
 !    dlt_ice_tot = 0.0
-!    do k=1,IG%CatIce
-!      do m=1,CS%fldno
-!        fld_name = CS%var(m)%fld_name
-!        select case (trim(fld_name))
+    do k=1,IG%CatIce
+      do m=1,CS%fldno
+        fld_name = CS%var(m)%fld_name
+        select case (trim(fld_name))
 !          case('mH_ice')
 !            ithk_old = CS%Old_val(m)%fld(c,k)
 !            ithk_new = CS%var(m)%p(i,j,k)
-!          case('part_size')
-!            iconc_old = CS%Old_val(m)%fld(c,k)
-!            iconc_new = CS%var(m)%p(i,j,k)
-!            iconc_tot = iconc_tot + iconc_new
-!        end select
-!      enddo
-!
+          case('part_size')
+            iconc_old = CS%Old_val(m)%fld(c,k)
+            iconc_new = CS%var(m)%p(i,j,k)
+            iconc_tot_old = iconc_tot_old + iconc_old
+            iconc_tot = iconc_tot + iconc_new
+        end select
+      enddo
 !      dlt_iconc = iconc_new - iconc_old
 !      dlt_ithk  = ithk_new - ithk_old           ! ice mass change, kg m-2
 !      dlt_ice = ithk_new*iconc_new - ithk_old*iconc_old
 !      dlt_ice_tot = dlt_ice_tot + dlt_ice
-!    enddo
+    enddo
 !
 !    enthalpy_ocn = enthalpy_liquid(OSS%SST_C(i,j), OSS%s_surf(i,j), IST%ITV)
 !    enthalpy_ocn_tfrz = enthalpy_liquid_freeze(OSS%s_surf(i,j), IST%ITV) 
 !    enthalpy_ocn0 = enthalpy_liquid(0.0, OSS%s_surf(i,j), IST%ITV)
 !
-!    if (i==CS%itest .and. j==CS%jtest .and. f_debug) then  
+    if (i==CS%itest .and. j==CS%jtest .and. f_debug) then  
+      write(mesg, '("old conc=",F6.4," new conc=",F6.4," ice enth J/kg=",D12.3)') &
+            iconc_tot_old, iconc_tot, IST%enth_ice(i,j,k,l)*US%Q_to_J_kg
 !      write(mesg, '("enthalpy_ocn=",D12.4," enthalpy_tfrz=",D12.4," iconc=",D12.4," dltIce=",D12.4,&
 !            " enth0=",D12.4," sst=",F6.2)') &
 !           enthalpy_ocn*US%Q_to_J_kg, enthalpy_ocn_tfrz*US%Q_to_J_kg, &
 !           iconc_tot, dlt_ice_tot*US%RZ_to_kg_m2,&
 !           enthalpy_ocn0*US%Q_to_J_kg, OSS%SST_C(i,j)*US%C_to_degC
-!      write(*,'(A)') trim(mesg)
-!    endif
+      write(*,'(A)') trim(mesg)
+    endif
 !
 !    CS%Enth_out_ocn_old(c) = IOF%Enth_Mass_out_ocn(i,j)
 !    CS%flux_salt_old(c) = IOF%flux_salt(i,j)
