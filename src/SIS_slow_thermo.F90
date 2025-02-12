@@ -61,9 +61,10 @@ use SIS2_ice_thm,      only : ice_resize_SIS2, add_frazil_SIS2, rebalance_ice_la
 use SIS2_ice_thm,      only : get_SIS2_thermo_coefs, enthalpy_liquid_freeze
 use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, calculate_T_freeze
 !! DD:
-use SIS_sponge,        only : initialize_isponge, set_up_isponge_field, apply_isponge, isponge_CS
-use SIS_sponge,        only : adjust_IOfluxes_isponge
-use SIS_sponge,        only : check_IOF, check_FIA     !! Debugging 
+use SIS_sponge,        only : initialize_icerelax_file, set_up_isponge_field, apply_isponge, isponge_CS
+use SIS_sponge,        only : global_to_local_ij
+!use SIS_sponge,        only : adjust_IOfluxes_isponge
+!use SIS_sponge,        only : check_IOF, check_FIA     !! Debugging 
 
 implicit none ; private
 
@@ -435,10 +436,9 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
 
   ! DD: do ice relaxation if requested before thermodynamics
   if (ispCS%use_isponge) then
+!    call SIS_mesg("SIS_slow_thermo: NOT calling apply_isponge ")
     call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
-    call apply_isponge(dt_slow, ispCS, IG, IOF, IST, US, OSS)
-!!    call check_IOF(ispCS, IOF, OSS, US, 'Fluxes After apply_isponge')  
-!    call check_FIA(dt_slow, ispCS, FIA, US, IG, 'Fluxes After apply_isponge')  ! DD
+    call apply_isponge(dt_slow, ispCS, G, IG, IST, US, OSS, CS%Time)
   endif
   ! DD
 
@@ -1437,7 +1437,6 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
 #include "version_variable.h"
   character(len=40) :: mdl = "SIS_slow_thermo" ! This module's name.
   logical           :: debug
-!! DD   TODO: read Irelax, Hice conc ice fields, convert to correct units & categories
   logical           :: use_isponge  
   real              :: Irelax(SZI_(G),SZJ_(G))    ! The sponge damping rate [T-1 ~> s-1] - 
                                                   !! for now,then move where it is read in
@@ -1609,81 +1608,97 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "specified via SIS_SPONGE_CONFIG.", default=.false.)
   if (use_isponge) then
     call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: True")
+    call SIS_mesg("SIS_slow_thermo: calling initialize_icerelax_file")
+    ! Debugging only: add test point
+    itest=0 ; jtest=0
+    !itestG = 317 ; jtestG = 684
+    itestG = 307 ; jtestG = 680
+    call global_to_local_ij(G, itestG, jtestG, itest, jtest)
+    if (itest>0 .and. jtest>0) then
+      write(mesg, '("SIS_slow_thermo: itest/jtest =",2(i5,1x),"calling initialize_icerelax_file")') &
+           itest, jtest
+      write(*,'(A)') trim(mesg)
+      call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time, itest=itest, jtest=jtest)
+    else
+      call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time)
+    endif
+
 ! Next initialize sponge CS and read all information from input files
 ! Temporary steps for code development - generate some relaxation time 
 ! Will be replaced with actual relaxation time from an input file
-    inrlx = .false.
-    Irelax = 0.0
-    i1 = 260; i2 = 342; j1 = 575; j2 = 736
-    itestG = 317; jtestG = 684
-    istrtC = 0; iendC = 0; jstrtC = 0; jendC = 0
-    istrtD = 0; iendD = 0; jstrtD = 0; jendD = 0
-    nihalo = G%Domain%nihalo
-    njhalo = G%Domain%njhalo
+!   inrlx = .false.
+!   Irelax = 0.0
+!   i1 = 260; i2 = 342; j1 = 575; j2 = 736
+!   itestG = 317; jtestG = 684
+!   istrtC = 0; iendC = 0; jstrtC = 0; jendC = 0
+!   istrtD = 0; iendD = 0; jstrtD = 0; jendD = 0
+!   nihalo = G%Domain%nihalo
+!   njhalo = G%Domain%njhalo
 !    write(mesg,'("SIS_slow_thermo: nihalo=",I4," njhalo=",I4)') nihalo, njhalo
 !    call SIS_mesg(mesg) 
-    current_pe = PE_here()
+!   current_pe = PE_here()
 !    print*,'PE: ',current_pe,' isc=',G%isc,' iec=',G%iec,' jsc=',G%jsc,' jec=',G%jec
 !    print*,'PE: ',current_pe,' isd=',G%isd,' ied=',G%ied,' jsd=',G%jsd,' jed=',G%jed
 !    print*,'PE: ',current_pe,' isd_global=',G%isd_global, 'jsd_global=',G%jsd_global
 ! Exclude halo points, computational domain:
-    nic = G%iec - G%isc + 1
-    njc = G%jec - G%jsc + 1
-    iscG = G%isd_global + nihalo; iecG = iscG + nic
-    jscG = G%jsd_global + njhalo; jecG = jscG + njc
+!   nic = G%iec - G%isc + 1
+!   njc = G%jec - G%jsc + 1
+!   iscG = G%isd_global + nihalo; iecG = iscG + nic
+!   jscG = G%jsd_global + njhalo; jecG = jscG + njc
 ! Include halo points, i.e. data domain:
-    nid  = G%ied - G%isd + 1
-    njd  = G%jed - G%jsd + 1
-    isdG = G%isd_global; iedG = isdG + nid
-    jsdG = G%jsd_global; jedG = jsdG + njd
-    if ((isdG >= i1 .and. isdG < i2) .or. (iedG > i1 .and. iedG <= i2)) then
-      if ((jsdG >= j1 .and. jsdG < j2) .or. (jedG > j1 .and. jedG <= j2)) then
-        istrtG = max(isdG, i1); iendG = min(iedG, i2)
-        jstrtG = max(jsdG, j1); jendG = min(jedG, j2)
+!   nid  = G%ied - G%isd + 1
+!   njd  = G%jed - G%jsd + 1
+!   isdG = G%isd_global; iedG = isdG + nid
+!   jsdG = G%jsd_global; jedG = jsdG + njd
+!   if ((isdG >= i1 .and. isdG < i2) .or. (iedG > i1 .and. iedG <= i2)) then
+!     if ((jsdG >= j1 .and. jsdG < j2) .or. (jedG > j1 .and. jedG <= j2)) then
+!       istrtG = max(isdG, i1); iendG = min(iedG, i2)
+!       jstrtG = max(jsdG, j1); jendG = min(jedG, j2)
 !        istrtC = istrtG - iscG + 1 + nihalo; iendC = iendG - iscG + 1 + nihalo;
 !        jstrtC = jstrtG - jscG + 1 + njhalo; jendC = jendG - jscG + 1 + njhalo;
-        istrtD = istrtG - isdG + 1; iendD = iendG - isdG + 1;
-        jstrtD = jstrtG - jsdG + 1; jendD = jendG - jsdG + 1;
+!       istrtD = istrtG - isdG + 1; iendD = iendG - isdG + 1;
+!       jstrtD = jstrtG - jsdG + 1; jendD = jendG - jsdG + 1;
 !        print*,'PE: ',current_pe,'istrtG=',istrtG,' iendG=',iendG,' jstrtG=',jstrtG,' jendG=',jendG
 !        print*,'PE: ',current_pe,'istrtC=',istrtC,' iendC=',iendC,' jstrtC=',jstrtC,' jendC=',jendC
 !        Irelax(istrtC:iendC,jstrtC:jendC) = 0.00028  ! 1hr relaxation, s-1, computational domain
-        Irelax(istrtD:iendD,jstrtD:jendD) = 0.00014  ! 2hr relaxation, s-1, data domain
-        inrlx = .true.
-      endif
-    endif
+!       Irelax(istrtD:iendD,jstrtD:jendD) = 0.00014  ! 2hr relaxation, s-1, data domain
+!       inrlx = .true.
+!     endif
+!   endif
 
 ! Find test point:
-    itest = 0; jtest = 0
-    if (iscG <= itestG .and. itestG <= iecG .and. jscG <= jtestG .and. jtestG <= jecG) then
-      itest = itestG - iscG + 1; jtest = jtestG - jscG + 1      
-    endif
-    
-    if (itest > 0 .and. jtest > 0) then
-      print*,'PE: ',current_pe,' isG=',istrtG,' ieG=',iendG,' jsc=',jstrtG,' jec=',jendG
-      print*,'itest=',itest,' jtest=',jtest
-    endif
+!   itest = 0; jtest = 0
+!   if (iscG <= itestG .and. itestG <= iecG .and. jscG <= jtestG .and. jtestG <= jecG) then
+!     itest = itestG - iscG + 1; jtest = jtestG - jscG + 1      
+!   endif
+!   
+!   if (itest > 0 .and. jtest > 0) then
+!     print*,'PE: ',current_pe,' isG=',istrtG,' ieG=',iendG,' jsc=',jstrtG,' jec=',jendG
+!     print*,'itest=',itest,' jtest=',jtest
+!   endif
 
-    call initialize_isponge(param_file, Irelax, G, IG, ispCS, itest, jtest) 
+! Now it is called from initialize_icerelax_file()
+!    call initialize_isponge(param_file, Irelax, G, IG, ispCS, itest, jtest) 
 ! Set up sponge fields
-    call SIS_mesg("SIS_slow_thermo: setting up ice sponge fields")
-! Here add reading relax data: Hice, Conc_ice
+!    call SIS_mesg("SIS_slow_thermo: setting up ice sponge fields")
 ! Assumed that relaxation fields are already in ice categories and correct units
 ! Set up ice thickness:
-    tmp = 0.0
-    call get_SIS2_thermo_coefs(sIST%ITV, rho_ice=rho_ice)
-    dmm = 2.2 * US%m_to_Z * rho_ice
-    write(mesg, '("SIS_slow_thermo: rho_ice=",F7.2," dmm_scaled=",F16.4," scale m2Z=",F6.2)') &
-                    rho_ice, dmm, US%m_to_Z 
-    call SIS_mesg(mesg)
-    if (inrlx) &
-      tmp(:,:,IG%CatIce) = 2.2 * US%m_to_Z * rho_ice  ! m --> kg/m2 and unscale
-    call set_up_isponge_field(tmp, sIST%mH_ice, G, IG, ispCS, IG%CatIce, 'mH_ice')
-! Set up ice concentration by cats
-    tmp = 0.0
-    if (inrlx) &
-      tmp(:,:,IG%CatIce) = 0.9 ! partial ice area, unitless  
-    call set_up_isponge_field(tmp, sIST%part_size, G, IG, ispCS, IG%CatIce, 'part_size')
-    call SIS_mesg("SIS_slow_thermo: finished setting up ice sponge fields ")
+!    tmp = 0.0
+!    call get_SIS2_thermo_coefs(sIST%ITV, rho_ice=rho_ice)
+!    dmm = 2.2 * US%m_to_Z * rho_ice
+!    write(mesg, '("SIS_slow_thermo: rho_ice=",F7.2," dmm_scaled=",F16.4," scale m2Z=",F6.2)') &
+!                    rho_ice, dmm, US%m_to_Z 
+!    call SIS_mesg(mesg)
+!    if (inrlx) &
+!      tmp(:,:,IG%CatIce) = 2.2 * US%m_to_Z * rho_ice  ! m --> kg/m2 and unscale
+!!    call set_up_isponge_field(tmp, sIST%mH_ice, G, IG, ispCS, IG%CatIce, 'mH_ice')
+!! Set up ice concentration by cats
+!    tmp = 0.0
+!    if (inrlx) &
+!      tmp(:,:,IG%CatIce) = 0.9 ! partial ice area, unitless  
+! now it is called from initialize_icerelax_file
+!    call set_up_isponge_field(tmp, sIST%part_size, G, IG, ispCS, IG%CatIce, 'part_size')
+!    call SIS_mesg("SIS_slow_thermo: finished setting up ice sponge fields ")
 
   else
     call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: False")
