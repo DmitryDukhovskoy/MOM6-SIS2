@@ -1611,10 +1611,11 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
     call SIS_mesg("SIS_slow_thermo: calling initialize_icerelax_file")
     ! Debugging only: add test point
     itest=0 ; jtest=0
-    !itestG = 317 ; jtestG = 684
-    itestG = 307 ; jtestG = 680
+    !itestG = 317 ; jtestG = 684  ! test pnt #1
+    !itestG = 307 ; jtestG = 680
+    itestG = 192 ; jtestG = 650
     call global_to_local_ij(G, itestG, jtestG, itest, jtest)
-    if (itest>0 .and. jtest>0) then
+    if (itest.gt.0 .and. jtest.gt.0) then
       write(mesg, '("SIS_slow_thermo: itest/jtest =",2(i5,1x),"calling initialize_icerelax_file")') &
            itest, jtest
       write(*,'(A)') trim(mesg)
