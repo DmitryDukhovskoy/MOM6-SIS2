@@ -189,8 +189,9 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   if (present(itest) .and. present(jtest)) then
     write(mesg,'(A," itest/jtest=",2(i4,1x)," calling initialize_isponge")') &
          trim(mdl), itest, jtest
-    write(*,'(A)') trim(mesg)
+    write(*,'(A)')
     call initialize_isponge(param_file, Irelax, G, IG, CS, itest=itest, jtest=jtest)
+
   else
     call SIS_mesg('initialize_icerelax_file: Calling initialize_isponge') 
     call initialize_isponge(param_file, Irelax, G, IG, CS)
@@ -205,14 +206,14 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
   call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: mH_ice') 
-  call set_up_isponge_field(filename, ithck_var, Time, 1, IG%CatIce, G, IG, US, IST%mH_ice, CS, &
+  call set_up_isponge_field(filename, ithck_var, Time, G, IG, US, IST%mH_ice, CS, &
        'mH_ice', rlx_long_name='ice_thickness', rlx_unit='kg m-2', scale=US%m_to_Z * rho_ice)
   call SIS_mesg('initialize_icerelax_file: Calling set_up_isponge_field: part_size') 
-  call set_up_isponge_field(filename, iarea_var, Time, 0, IG%CatIce, G, IG, US, IST%part_size, CS, &
+  call set_up_isponge_field(filename, iarea_var, Time, G, IG, US, IST%part_size, CS, &
          'part_size', rlx_long_name='partial_area', rlx_unit='none')
 
   ! Debug:
-  write(mesg,'(A," rho_ice=",f12.4)') trim(mdl), rho_ice
+  write(mesg,'(A,"rho_ice=",f12.4)') trim(mdl), rho_ice
   call SIS_mesg(trim(mesg))
 
 end subroutine initialize_icerelax_file
@@ -331,20 +332,18 @@ end subroutine initialize_isponge
 !! address is given by f_ptr. Reference profile = values towards which the
 !! SIS field is being relaxed to. 
 !! Current version assumes 2D fields only (+ 1D for categories) such as Hice
-subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, f_ptr, CS, &
+subroutine set_up_isponge_field(filename, fieldname, Time, G, IG, US, f_ptr, CS, &
                                 rlxfld_name, rlx_long_name, rlx_unit, scale)
   character(len=*),        intent(in) :: filename   !< The name of the file with the
                                                     !! time varying field data
   character(len=*),        intent(in) :: fieldname  !< The name of the field in the file
                                                     !! with the time varying field data
   type(time_type),         intent(in) :: Time       !< The current model time
-  integer,                 intent(in) :: kdS, kdE   !< start/end indices for Cats, conc(0)= open water area
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG         !< The sea-ice specific grid type
   type(unit_scale_type),   intent(in) :: US         !< A structure with unit conversion factors
-  real, dimension(SZI_(G), SZJ_(G), kdS:kdE), &
+  real, dimension(SZI_(G), SZJ_(G), IG%CatIce), &
                    target, intent(in) :: f_ptr      !< a pointer to the field which will be relaxed [various]
-                                                    !! note: IST%part_size(isd:ied, jsd:jed, 0:CatIce) 
   type(isponge_CS),     pointer       :: CS         !< A pointer to the control structure for this module that
                                                     !! is set by a previous call to initialize_sponge.
   character(*),            intent(in) :: rlxfld_name !< Name of the relaxed field
@@ -361,19 +360,13 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   ! Local variables
   integer :: isd, ied, jsd, jed
   integer, dimension(4) :: fld_sz
-  integer :: j, k, col, CatIce
-  character(len=256) :: mesg      ! String for error messages
+  integer :: j, k, col
+  character(len=256) :: mesg ! String for error messages
   character(len=256) :: long_name ! The long name of the tracer field
-  character(len=256) :: unit      ! The unit of the tracer field
-  character(len=40)  :: mdl       ! this module name
-! Debug
-  integer :: i, iiG, jjG, kk0
+  character(len=256) :: unit ! The unit of the tracer field
 
   long_name = rlxfld_name; if (present(rlx_long_name)) long_name = rlx_long_name
   unit = 'none'; if (present(rlx_unit)) unit = rlx_unit
-
-  CatIce = IG%CatIce
-  mdl = 'set_up_isponge_field'
 
   if (.not.associated(CS)) return
   ! initialize time interpolator module
@@ -403,24 +396,14 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   call get_external_field_info(CS%Ref_val(CS%fldno)%field, size=fld_sz, axes=CS%Ref_val(CS%fldno)%axes_data)
   !nz_data = fld_sz(3)
   !ncat_data = IG%CatIce
-  CS%Ref_val(CS%fldno)%ncat_data = CatIce !< individual relax fields should have same # of categories
+  CS%Ref_val(CS%fldno)%ncat_data = IG%CatIce !< individual relax fields should have same # of categories
   CS%Ref_val(CS%fldno)%num_tlevs = fld_sz(4)
   CS%Ref_val(CS%fldno)%scale = 1.0 ; if (present(scale)) CS%Ref_val(CS%fldno)%scale = scale
   ! initializes the target profile array for this field
   ! for all columns which will be masked
 
-  select case(trim(rlxfld_name))
-    case('part_size')
-      allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,0:CatIce), source=0.0)
-    case('mH_ice')
-      allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,CatIce), source=0.0)
-    case default
-      write(mesg,'(A," Unknown relaxation field: ",A," setting default pointer dimensions =",2(i5,1x))') &
-           trim(mdl),trim(rlxfld_name),CS%num_col,CatIce
-      call SIS_error(WARNING,"print_ice_thkn_conc: "//mesg)
-      allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,CatIce), source=0.0)
-  end select
-  allocate(CS%Old_val(CS%fldno)%fld(CS%num_col,CatIce), source=0.0)
+  allocate(CS%Ref_val(CS%fldno)%p(CS%num_col,IG%CatIce), source=0.0)
+  allocate(CS%Old_val(CS%fldno)%fld(CS%num_col,IG%CatIce), source=0.0)
   allocate(CS%Ref_orig(CS%fldno)%fld(isd:ied,jsd:jed), source=0.0)
 
   CS%var(CS%fldno)%p => f_ptr    ! points to the actual ice fields that will be relaxed
@@ -429,21 +412,6 @@ subroutine set_up_isponge_field(filename, fieldname, Time, kdS, kdE, G, IG, US, 
   write(mesg,'("set_up_isponge_field: ",A," fld_sz(1:4)=",4(I5,1x)," scale=",f14.6)') &
                rlxfld_name, fld_sz(1:4), CS%Ref_val(CS%fldno)%scale
   call SIS_mesg(mesg)
-
-! Debug - check pointer:
-  iiG = 230 ; jjG = 700
-  kk0 = 1
-  if (trim(rlxfld_name) == 'part_size') kk0=0
-  do i=isd,ied ; do j=jsd,jed
-    iiG = G%isd_global + (i-1)  ; jjG = G%jsd_global + (j-1)
-    if (i.eq.CS%itest .and. j.eq.CS%jtest) then
-      do k=kk0,CatIce
-        write(mesg,'("set_up_isponge: ",A," k=",i2," ispCS =",f12.5," IST =",f12.5)') &
-             trim(rlxfld_name), k, CS%var(CS%fldno)%p(i,j,k), f_ptr(i,j,k)
-        write(*,'(A)') trim(mesg)
-      enddo
-    endif
-  enddo ; enddo
 
 end subroutine set_up_isponge_field
 
@@ -455,11 +423,13 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
                                                    !! structure for this module
   type(ice_grid_type),       intent(in)  :: IG     !< The sea-ice specific grid type
   type(SIS_hor_grid_type),   intent(in)  :: G          !< The horizontal grid type
+!  type(ice_ocean_flux_type), intent(inout)  :: IOF  !< A structure containing fluxes from the ice to
+!                                                   !! the ocean that are calculated by the ice model.
   type(ice_state_type),   intent(inout)  :: IST    !< A type describing the state of the sea ice
   type(unit_scale_type),     intent(in)  :: US     !< A structure with unit conversion factors
   type(ocean_sfc_state_type), intent(in) :: OSS    !< A structure containing the arrays that describe
                                                    !! the ocean's surface state for the ice model.
-  type(time_type),           intent(in)  :: Time   !< The current model date
+  type(time_type),           intent(in)    :: Time !< The current model date
 
   ! Local variables
 !  real :: H_rescale_ice, H_rescale_snow
@@ -490,8 +460,7 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   real, dimension(:,:),  allocatable   :: mask_in    !< A 2-d mask for extended input grid [nondim]
 
   !real :: dgr2rad  ! A conversion factor from degrees to radians [radians degree-1]
-  real    :: I_Nk
-  real    :: part_water
+  real :: I_Nk
   integer :: id, jd, kd, jdp ! Input dataset data sizes
   type(axis_info), dimension(4) :: axes_data
   integer :: i, j, k, l, m, col
@@ -507,6 +476,8 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
   !integer :: turns
   integer, dimension(4) :: fld_sz
 
+  !turns = G%HI%turns
+  
   is = G%isc ; ie = G%iec ; js = G%jsc ; je = G%jec
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
   isg = G%isg ; ieg = G%ieg ; jsg = G%jsg ; jeg = G%jeg
@@ -616,22 +587,13 @@ subroutine apply_isponge(dt_slow, CS, G, IG, IST, US, OSS, Time)
       enddo
     enddo  ! CatIce
 
-! Adjust open water partial area:
-    do m=1,CS%fldno
-      if (CS%var(m)%fld_name(1:9)=='part_size') then
-        part_water = 1.0 - sum(CS%var(m)%p(i,j,1:CatIce))
-        part_water = max(0.0, part_water)
-        part_water = min(1.0, part_water)
-        CS%var(m)%p(i,j,0) = part_water
-      endif
-    enddo
-
 ! Remove all snow if ice conc or thickness = 0
     do k=1,IG%CatIce
       do m=1,CS%fldno
         if (CS%var(m)%p(i,j,k).lt.1.e-10) IST%mH_snow(i,j,k)=0.0
       enddo
     enddo
+ 
     
 ! Debug  
     if (i.eq.CS%itest .and. j.eq.CS%jtest) then  
@@ -889,7 +851,6 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
   real :: ccat_k, hcat_k, dch_k !< conc, ivol, ice vol change in a cat=k
   real :: cnew 
   real :: htot_min
-  real :: part_water          !< partial area of open water
   character(len=40)  :: mdl = "distribute_ice2cats"  ! This module's name.
   character(len=256) :: mesg
   logical :: scaled_hice
@@ -940,14 +901,14 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
             CS%Ref_val(m)%p(col,k) = IG%mH_cat_bound(k+1) !< The lower mass/unit area limits for ice cat [R Z ~> kg m-2].
           case('part_size')
             CS%Ref_val(m)%p(col,k) = 0.0
-            if (k.eq.1) CS%Ref_val(m)%p(col,0) = 1.0     !< open water partial area
         end select
       enddo ; enddo
       cycle
     endif    
-
     ck_min = 1.e-2    !< conc in the lower cats, some small value but >> eps0 
-    icat0 = 1e6
+  
+    icat0=1e6
+    
     hice_k = hice/cice   ! ice thkn (vol/part. area)  from ice volume (m3/m2) in cat=k
     icat0 = find_icat(hice_k, CatIce, hLim_vals)
 ! Debug:
@@ -984,7 +945,6 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
             CS%Ref_val(m)%p(col,k) = 0.0 
           case('part_size')
             CS%Ref_val(m)%p(col,k) = 0.0
-            if (k.eq.1) CS%Ref_val(m)%p(col,0) = 1.0  ! open water fraction size
         end select
       enddo ; enddo
       cycle
@@ -1038,18 +998,7 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
           CS%Ref_val(m)%p(col,k) = ccat(k)
       end select
     enddo ; enddo
-
-! Partial area of open water:
-    do m=1,CS%fldno 
-      select case (trim(CS%var(m)%fld_name))
-        case('part_size')
-          part_water = 1.0 - sum(CS%Ref_val(m)%p(col,1:CatIce))
-          part_water = max(0.0, part_water)
-          part_water = min(1.0, part_water)
-          CS%Ref_val(m)%p(col,0) = part_water
-      end select
-    enddo 
-
+ 
 ! Debug
     ! Check that the mean ice thickn and total conc. are conserved:
     hcat = 0.0 ; ccat = 0.0  
@@ -1062,8 +1011,8 @@ subroutine distribute_ice2cats(CS, IG, G, scaled, eps_err)
       end select
     enddo
 
-    call partial_area_total(CatIce, ccat(1:CatIce), cice_tot)
-    call ice_thkn_total(CatIce, ccat(1:CatIce), hcat, hice_tot)
+    call partial_area_total(CatIce, ccat, cice_tot)
+    call ice_thkn_total(CatIce, ccat, hcat, hice_tot)
 
     if (abs(cice_tot - cice).gt.eps0) then
       write(mesg,'(A,"ice conc. not conserved: init=",f6.3," after redistr.=",f6.3," err=",d14.4)') &
@@ -1214,7 +1163,7 @@ subroutine print_ice_thkn_conc(IST, CS, G, IG, US, mesg_in, use_IST)
   real               :: rho_ice, mHice_k, iconc_k, ithkn_k, ithkn_tot, iconc_tot
   character(len=40)  :: str_in
   character(len=256) :: mesg
-  character(len=15)  :: cs_name
+  character(len=10)  :: cs_name
   logical :: fld_IST
 
   fld_IST = .false.
@@ -1228,7 +1177,6 @@ subroutine print_ice_thkn_conc(IST, CS, G, IG, US, mesg_in, use_IST)
 
   str_in = ' '
   if (present(mesg_in)) str_in = trim(mesg_in)
-  str_in = trim(str_in) // trim(cs_name)
 
   CatIce = IG%CatIce
   call get_SIS2_thermo_coefs(IST%ITV, rho_ice=rho_ice)
@@ -1263,12 +1211,13 @@ subroutine print_ice_thkn_conc(IST, CS, G, IG, US, mesg_in, use_IST)
       ithkn_tot = ithkn_tot + ithkn_k
       iconc_tot = iconc_tot + iconc_k
 
-      write(mesg,'(A," Test iG/jG=",2(i4,1x)," k=",i2," mHice=",f12.5," thkn=",f12.5," conc=",f12.5)') &
+      str_in = str_in // trim(cs_name)
+      write(mesg,'(A," Test iG/jG=",2(i4,1x)," k=",i2," mHice=",f12.4," thkn=",f12.4," conc=",f12.4)') &
           trim(str_in), iiG, jjG, k, mHice_k, ithkn_k, iconc_k
       write(*,'(A)') trim(mesg)
     enddo
 
-    write(mesg,'(A," ====  TOTAL: thkn=",f12.5," conc=",f12.5)') trim(str_in), ithkn_tot, iconc_tot
+    write(mesg,'(A," ====  TOTAL: thkn=",f12.4," conc=",f12.4)') trim(str_in), ithkn_tot, iconc_tot
     write(*,'(A)') trim(mesg) 
     exit
 

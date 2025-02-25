@@ -63,8 +63,7 @@ use SIS2_ice_thm,      only : enth_from_TS, Temp_from_En_S, enthalpy_liquid, cal
 !! DD:
 use SIS_sponge,        only : initialize_icerelax_file, set_up_isponge_field, apply_isponge, isponge_CS
 use SIS_sponge,        only : global_to_local_ij
-!use SIS_sponge,        only : adjust_IOfluxes_isponge
-!use SIS_sponge,        only : check_IOF, check_FIA     !! Debugging 
+use SIS_sponge,        only : print_ice_thkn_conc  ! Debug info
 
 implicit none ; private
 
@@ -436,8 +435,14 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
 
   ! DD: do ice relaxation if requested before thermodynamics
   if (ispCS%use_isponge) then
+    ! Debug:
+    call print_ice_thkn_conc(IST, ispCS, G, IG, US,  mesg_in="Before isponge", use_IST=.true.)
+    call print_ice_thkn_conc(IST, ispCS, G, IG, US)
     !call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
     call apply_isponge(dt_slow, ispCS, G, IG, IST, US, OSS, CS%Time)
+    !
+    call print_ice_thkn_conc(IST, ispCS, G, IG, US, mesg_in="AFTER isponge", use_IST=.true.)
+    call print_ice_thkn_conc(IST, ispCS, G, IG, US)
   endif
   ! DD
 
@@ -1605,7 +1610,8 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
     !itestG = 317 ; jtestG = 684  ! test pnt #1
     !itestG = 307 ; jtestG = 680
     !itestG = 192 ; jtestG = 650   ! E. Bering shelf near Alask
-    itestG = 148 ; jtestG = 639
+    !itestG = 148 ; jtestG = 639
+    itestG = 230 ; jtestG = 700
     call global_to_local_ij(G, itestG, jtestG, itest, jtest)
     if (itest.gt.0 .and. jtest.gt.0) then
       write(mesg, '("SIS_slow_thermo: itestG/jtestG =",2(i5,1x),"calling initialize_icerelax_file")') &
