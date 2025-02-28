@@ -436,13 +436,13 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   ! DD: do ice relaxation if requested before thermodynamics
   if (ispCS%use_isponge) then
     ! Debug:
-    call print_ice_thkn_conc(IST, ispCS, G, IG, US,  mesg_in="Before isponge", use_IST=.true.)
-    call print_ice_thkn_conc(IST, ispCS, G, IG, US)
+    !call print_ice_thkn_conc(IST, ispCS, G, IG, US,  mesg_in="Before isponge", use_IST=.true.)
+    !call print_ice_thkn_conc(IST, ispCS, G, IG, US)
     !call SIS_mesg("SIS_slow_thermo: calling apply_isponge ")
     call apply_isponge(dt_slow, ispCS, G, IG, IST, US, OSS, CS%Time)
     !
-    call print_ice_thkn_conc(IST, ispCS, G, IG, US, mesg_in="AFTER isponge", use_IST=.true.)
-    call print_ice_thkn_conc(IST, ispCS, G, IG, US)
+    !call print_ice_thkn_conc(IST, ispCS, G, IG, US, mesg_in="AFTER isponge", use_IST=.true.)
+    !call print_ice_thkn_conc(IST, ispCS, G, IG, US)
   endif
   ! DD
 
@@ -1446,10 +1446,10 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   character(len=200) :: mesg 
 !! for debugging, not needed after relaxation read from file implemented 
   integer :: i1, i2, j1, j2, icat
-  integer :: istrtC, iendC, jstrtC, jendC
-  integer :: istrtD, iendD, jstrtD, jendD, di1, di2, dj1, dj2  !! DD
+  !integer :: istrtC, iendC, jstrtC, jendC
+  !integer :: istrtD, iendD, jstrtD, jendD, di1, di2, dj1, dj2  !! DD
   integer :: itest, jtest, itestG, jtestG
-  logical :: inrlx  !! DD - for code development, not needed later
+  !logical :: inrlx  !! DD - for code development, not needed later
 !! DD
   real               :: transmute_scale ! A scaling factor to use when reading the transmutation rate.
   character(len=64)  :: transmute_var   ! Transmutation rate variable name in file
@@ -1605,22 +1605,7 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   if (use_isponge) then
     call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: True")
     call SIS_mesg("SIS_slow_thermo: calling initialize_icerelax_file")
-    ! Debugging only: add test point
-    itest=0 ; jtest=0
-    !itestG = 317 ; jtestG = 684  ! test pnt #1
-    !itestG = 307 ; jtestG = 680
-    !itestG = 192 ; jtestG = 650   ! E. Bering shelf near Alask
-    !itestG = 148 ; jtestG = 639
-    itestG = 230 ; jtestG = 700
-    call global_to_local_ij(G, itestG, jtestG, itest, jtest)
-    if (itest.gt.0 .and. jtest.gt.0) then
-      write(mesg, '("SIS_slow_thermo: itestG/jtestG =",2(i5,1x),"calling initialize_icerelax_file")') &
-           itestG, jtestG
-      write(*,'(A)') trim(mesg)
-      call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time, itest=itest, jtest=jtest)
-    else
-      call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time)
-    endif
+    call initialize_icerelax_file(param_file, G, IG, ispCS, US, sIST, Time)
   else
     call SIS_mesg("SIS_slow_thermo: returned ICE SPONGE flag: False")
   endif

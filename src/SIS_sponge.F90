@@ -111,7 +111,7 @@ contains
 !> This subroutine sets the inverse restoration time (Idamp) for sea ice fields and
 !! the values towards which the interface heights and an arbitrary
 !! number of tracers should be restored within the relaxation zone. 
-subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest, jtest)
+subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
   type(param_file_type),   intent(in) :: param_file !< A structure to parse for run-time parameters
   type(SIS_hor_grid_type), intent(in) :: G          !< The horizontal grid type
   type(ice_grid_type),     intent(in) :: IG         !< The sea-ice specific grid type
@@ -120,7 +120,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   type(unit_scale_type),   intent(in) :: US         !< A structure with unit conversion factors
   type(ice_state_type),    intent(in) :: IST        !< A type describing the state of the sea ice
   type(time_type),         intent(in) :: Time       !< The sea-ice model's clock,
-  integer, optional, intent(in) :: itest, jtest     !< Test grid indices for debugging, on data domain
+  !integer, optional, intent(in) :: itest, jtest     !< Test grid indices for debugging, on data domain
 
   real, dimension(SZI_(G),SZJ_(G))  :: Irelax  !< The inverse of the restoring time [T-1 ~> s-1].
   real, allocatable, dimension(:,:) :: rlx_H ! A temporary array for reading relax target ice thickness
@@ -130,6 +130,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   integer :: i, j, k, is, ie, js, je, ncat
   integer :: isd, ied, jsd, jed
   integer :: isc, iec, jsc, jec
+  integer :: itestG, jtestG, itest, jtest
   integer :: year !< The current model year
   integer :: day  !< The current model year-day
   integer :: second !< The second of the day
@@ -147,7 +148,7 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   isc = G%isc ; iec = G%iec ; jsc = G%jsc ; jec = G%jec ; ncat = IG%CatIce
   isd = G%isd ; ied = G%ied ; jsd = G%jsd ; jed = G%jed
 
-  Irelax = 0.0
+  Irelax = 0.0 ; itestG = 0 ; jtestG = 0 ; itest = 0 ; jtest = 0
 
   call get_param(param_file, mdl, "INPUTDIR", inputdir, default=".")
   inputdir = slasher(inputdir)
@@ -166,6 +167,10 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   call get_param(param_file, mdl, "ISPONGE_RLXRATE_VAR", rlxrate_var, &
                  "The name of the relaxation rate variable in "//&
                  "ISPONGE_RELAX_FILE.", default="relax_rate")
+  call get_param(param_file, mdl, "ISPONGE_ITEST", itestG, &
+                 "I index of a test point to check ice relaxation dumped to log file")
+  call get_param(param_file, mdl, "ISPONGE_JTEST", jtestG, &
+                 "J index of a test point to check ice relaxation dumped to log file")
 
   ! Read in relaxation rate, s-1, for ice thickness and partial area
   filename = trim(inputdir)//trim(relaxrate_file)
@@ -186,9 +191,15 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
   write(mesg,'("SIS start day=",I," num_days=",I)') start_of_day, num_days
   call SIS_mesg(mesg)
 
-  if (present(itest) .and. present(jtest)) then
-    write(mesg,'(A," itest/jtest=",2(i4,1x)," calling initialize_isponge")') &
-         trim(mdl), itest, jtest
+  !write(mesg,'("From param_file: itestG=",i4," jtestG=",i4)') itestG, jtestG
+  !write(*,'(A)') trim(mesg)
+
+  if (itestG.gt.0 .and. jtestG.gt.0) &
+    call global_to_local_ij(G, itestG, jtestG, itest, jtest)
+
+  if (itest.gt.0 .and. jtest.gt.0) then
+    write(mesg,'(A,"itestG/jtestG=",2(i5,1x)," itest/jtest=",2(i4,1x)," calling initialize_isponge")') &
+         trim(mdl), itestG, jtestG, itest, jtest
     write(*,'(A)') trim(mesg)
     call initialize_isponge(param_file, Irelax, G, IG, CS, itest=itest, jtest=jtest)
   else
@@ -212,8 +223,8 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time, itest,
          'part_size', rlx_long_name='partial_area', rlx_unit='none')
 
   ! Debug:
-  write(mesg,'(A," rho_ice=",f12.4)') trim(mdl), rho_ice
-  call SIS_mesg(trim(mesg))
+  !write(mesg,'(A," rho_ice=",f12.4)') trim(mdl), rho_ice
+  !call SIS_mesg(trim(mesg))
 
 end subroutine initialize_icerelax_file
 !
