@@ -228,10 +228,10 @@ subroutine initialize_icerelax_file(param_file, G, IG, CS, US, IST, Time)
 
 end subroutine initialize_icerelax_file
 !
-!> This subroutine determines the number of points which are within ice sponges in
+!> This subroutine determines the number of points which are within ice relaxation region in
 !! this computational domain.  Only points that have positive values of
-!! Iresttime and which mask2dT indicates are ocean points are included in the
-!! sponges.  
+!! Iresttime and which mask2dT indicates are ocean points are included as the
+!! relaxation points.  
 !subroutine initialize_isponge(Iresttime, IST, G, IG, param_file, CS)
 subroutine initialize_isponge(param_file, Iresttime, G, IG, CS, itest, jtest, time_var_rlx, sponge_ongrid)
 !  type(ice_state_type),    intent(in) :: IST        !< A type describing the state of the sea ice
