@@ -2708,8 +2708,8 @@ subroutine ice_model_end(Ice)
 
     call SIS_optics_end(Ice%fCS%optics_CSp)
 
-    call SIS_sponge_end(Ice%sCS%isponge_CSp)  ! DD
-
+!    call SIS_sponge_end(Ice%sCS%isponge_CSp)  ! DD
+!
     if (Ice%fCS%Rad%add_diurnal_sw .or. Ice%fCS%Rad%do_sun_angle_for_alb) &
       call astronomy_end
 
@@ -2754,6 +2754,9 @@ subroutine ice_model_end(Ice)
     call SIS_slow_thermo_end(Ice%sCS%slow_thermo_CSp)
 
     call ice_thermo_end(Ice%sCS%IST%ITV)
+
+    if (associated(Ice%sCS%isponge_CSp)) &
+      call SIS_sponge_end(Ice%sCS%isponge_CSp)  ! DD
 
     ! End icebergs
     if (Ice%sCS%do_icebergs) call icebergs_end(Ice%icebergs)

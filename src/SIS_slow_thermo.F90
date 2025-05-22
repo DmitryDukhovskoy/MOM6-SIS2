@@ -36,7 +36,7 @@ use MOM_hor_index,     only : hor_index_type
 use MOM_io,            only : file_exists, MOM_read_data, slasher
 use MOM_time_manager,  only : time_type, time_type_to_real
 use MOM_unit_scaling,  only : unit_scale_type
-use MOM_coms,          only : PE_here   !! DD for debugging
+!use MOM_coms,          only : PE_here   !! DD for debugging
 
 use SIS_diag_mediator, only : enable_SIS_averaging, disable_SIS_averaging
 use SIS_diag_mediator, only : post_SIS_data, post_data=>post_SIS_data
@@ -317,7 +317,7 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   type(unit_scale_type),      intent(in)    :: US  !< A structure with unit conversion factors
   type(ice_grid_type),        intent(inout) :: IG  !< The sea-ice specific grid type
 !! DD
-  type(isponge_CS),           pointer       :: ispCS !< The control structure for the relaxation fields
+  type(isponge_CS),           pointer       :: ispCS !< A control structure for ice relaxation fields
 
   ! Local variables
   real, dimension(SZI_(G),SZJ_(G))   :: &
@@ -449,8 +449,6 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   ! The thermodynamics routines return updated values of the ice and snow
   ! masses-per-unit area and enthalpies.
   call SIS2_thermodynamics(IST, dt_slow, CS, OSS, FIA, IOF, G, US, IG)
-!  call check_IOF(ispCS, IOF, OSS, US, 'Fluxes After SIS2_thermodyanmics')   ! DD
-!  call check_FIA(dt_slow, ispCS, FIA, US, IG, 'Fluxes After SIS2_thermodynamics') ! DD
 
   !TOM> calculate partial ice growth for ridging and aging.
   if (CS%do_ridging) then
@@ -473,12 +471,10 @@ subroutine slow_thermodynamics(IST, dt_slow, CS, OSS, FIA, XSF, IOF, G, US, IG, 
   call disable_SIS_averaging(CS%diag)
 
   call accumulate_bottom_input(IST, OSS, FIA, IOF, dt_slow, G, US, IG, CS%sum_output_CSp)
-!  call check_IOF(ispCS, IOF, OSS, US, 'Fluxes After acccumulate_bottom_input')   ! DD
-!  call check_FIA(dt_slow, ispCS, FIA, US, IG, 'Fluxes After accumulate_bottom_input') ! DD
 
   ! This needs to go after accumulate_bottom_input.
   if (associated(XSF)) call add_excess_fluxes(IOF, XSF, G, US)
-  if (associated(XSF)) call SIS_mesg("SIS_slow_thermo: XSF associated ")  ! DD debugging
+  !if (associated(XSF)) call SIS_mesg("SIS_slow_thermo: XSF associated ")  ! DD debugging
 
   if (CS%column_check) &
     call write_ice_statistics(IST, CS%Time, CS%n_calls, G, US, IG, CS%sum_output_CSp, &
@@ -1434,21 +1430,21 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
   character(len=40) :: mdl = "SIS_slow_thermo" ! This module's name.
   logical           :: debug
   logical           :: use_isponge  
-  real              :: Irelax(SZI_(G),SZJ_(G))    ! The sponge damping rate [T-1 ~> s-1] - 
-                                                  !! for now,then move where it is read in
-  real              :: tmp(SZI_(G),SZJ_(G),IG%CatIce) ! 3D array for 2D+cat ice fields - for code development only
-  real              :: rho_ice
-  real              :: dmm   !! debugging
-  integer           :: current_pe, nihalo, njhalo, iscG, iecG, jscG, jecG
-  integer           :: nic, njc, istrtG, jstrtG, iendG, jendG
-  integer           :: isdG, iedG, jsdG, jedG
-  integer           :: nid, njd
-  character(len=200) :: mesg 
+  !real              :: Irelax(SZI_(G),SZJ_(G))    ! The sponge damping rate [T-1 ~> s-1] - 
+  !                                                !! for now,then move where it is read in
+  !real              :: tmp(SZI_(G),SZJ_(G),IG%CatIce) ! 3D array for 2D+cat ice fields - for code development only
+  !real              :: rho_ice
+  !real              :: dmm   !! debugging
+  !integer           :: current_pe, nihalo, njhalo, iscG, iecG, jscG, jecG
+  !integer           :: nic, njc, istrtG, jstrtG, iendG, jendG
+  !integer           :: isdG, iedG, jsdG, jedG
+  !integer           :: nid, njd
+  !character(len=200) :: mesg 
 !! for debugging, not needed after relaxation read from file implemented 
-  integer :: i1, i2, j1, j2, icat
+  !integer :: i1, i2, j1, j2, icat
   !integer :: istrtC, iendC, jstrtC, jendC
   !integer :: istrtD, iendD, jstrtD, jendD, di1, di2, dj1, dj2  !! DD
-  integer :: itest, jtest, itestG, jtestG
+  !integer :: itest, jtest, itestG, jtestG
   !logical :: inrlx  !! DD - for code development, not needed later
 !! DD
   real               :: transmute_scale ! A scaling factor to use when reading the transmutation rate.
@@ -1595,7 +1591,6 @@ subroutine SIS_slow_thermo_init(Time, G, US, IG, param_file, diag, CS, tracer_fl
                  "sensible, and issue warnings if they are not.  This "//&
                  "does not change answers, but can increase model run time.", &
                  default=.true.)
-
 !! DD - adding SIS sponge
   call SIS_mesg("SIS_slow_thermo: checking SIS_SPONGE in param_file")
   call get_param(param_file, mdl, "SIS_SPONGE", use_isponge, &
